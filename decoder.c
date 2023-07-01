@@ -18,7 +18,7 @@ extern "C" {
 
 #define MIN(X, Y)  ((X) < (Y) ? (X) : (Y))
 
-const int kCustomIoBufferSize = 32 * 1024;
+const int kCustomIoBufferSize = 64 * 1024;
 const int kInitialPcmBufferSize = 128 * 1024;
 const int kDefaultFifoSize = 1 * 1024 * 1024;
 const int kMaxFifoSize = 16 * 1024 * 1024;
@@ -490,7 +490,7 @@ int readFromFifo(uint8_t *data, int len) {
 }
 
 int readCallback(void *opaque, uint8_t *data, int len) {
-    //simpleLog("readCallback %d.", len);
+    simpleLog("readCallback %d.", len);
     int32_t ret         = -1;
     do {
         if (decoder == NULL) {
@@ -503,7 +503,7 @@ int readCallback(void *opaque, uint8_t *data, int len) {
 
         ret = decoder->isStream ? readFromFifo(data, len) : readFromFile(data, len);
     } while (0);
-    //simpleLog("readCallback ret %d.", ret);
+    simpleLog("readCallback ret %d.", ret);
     return ret;
 }
 
@@ -511,7 +511,7 @@ int64_t seekCallback(void *opaque, int64_t offset, int whence) {
     int64_t ret         = -1;
     int64_t pos         = -1;
     int64_t req_pos     = -1;
-    //simpleLog("seekCallback %lld %d.", offset, whence);
+    simpleLog("seekCallback %lld %d.", offset, whence);
     do {
         if (decoder == NULL || decoder->isStream || decoder->fp == NULL) {
             break;
@@ -538,7 +538,9 @@ int64_t seekCallback(void *opaque, int64_t offset, int whence) {
             decoder->fileWritePos       = pos;
             req_pos                     = pos;
             ret                         = -1;  // Forcing not to call read at once.
-            decoder->requestCallback(pos, getAailableDataSize());
+            int available = getAailableDataSize();
+            simpleLog("requestCallback params: pos= %lld, available= %lld.", pos, available);
+            // decoder->requestCallback(pos, available);
             simpleLog("Will request %lld and return %lld.", pos, ret);
             break;
         }
@@ -695,6 +697,8 @@ ErrorCode openDecoder(int *paramArray, int paramCount, long videoCallback, long 
         decoder->avformatContext = avformat_alloc_context();
         decoder->customIoBuffer = (unsigned char*)av_mallocz(kCustomIoBufferSize);
 
+        AVInputFormat* in_fmt = av_find_input_format("mov");
+        simpleLog("format name: %s, long name: %s.", in_fmt->name, in_fmt->long_name);
         AVIOContext* ioContext = avio_alloc_context(
             decoder->customIoBuffer,
             kCustomIoBufferSize,
@@ -712,12 +716,12 @@ ErrorCode openDecoder(int *paramArray, int paramCount, long videoCallback, long 
         decoder->avformatContext->pb = ioContext;
         decoder->avformatContext->flags = AVFMT_FLAG_CUSTOM_IO;
 
-        r = avformat_open_input(&decoder->avformatContext, NULL, NULL, NULL);
+        r = avformat_open_input(&decoder->avformatContext, NULL, in_fmt, NULL);
         if (r != 0) {
             ret = kErrorCode_FFmpeg_Error;
             char err_info[32] = { 0 };
-            av_strerror(ret, err_info, 32);
-            simpleLog("avformat_open_input failed %d %s.", ret, err_info);
+            av_strerror(r, err_info, 32);
+            simpleLog("avformat_open_input failed %d %s.", r, err_info);
             break;
         }
         
